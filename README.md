@@ -1,48 +1,128 @@
-# Fullstack Developer Test Challenge
+markdown
+# 🧩 Fullstack Developer Test Challenge
 
-Microservices demo with **NestJS (Product Service)** and **Golang (Order Service)**, using **MySQL**, **Redis**, and **Kafka** (event-driven).
+## 🚀 How to Run the Stack Locally
 
----
+Clone repository dan pastikan Docker sudah ter-install:
 
-## Table of Contents
-- [Architecture](#architecture)
-- [Quick Start](#quick-start)
-- [Default Ports](#default-ports)
-- [Environment Variables](#environment-variables)
-- [API Reference](#api-reference)
-- [Postman](#postman)
-- [Performance (k6)](#performance-k6)
-- [Project Structure](#project-structure)
-- [Troubleshooting](#troubleshooting)
+```bash
+git clone https://github.com/username/fullstack-test.git
+cd fullstack-test
+Jalankan semua container:
 
----
+bash
+docker-compose up -d --build
+🔍 Default Ports
+Service	URL / Host	Port
+Product Service	http://localhost:3000	3000
+Order Service	http://localhost:3001	3001
+MySQL	localhost:3306	3306
+Redis	localhost:6379	6379
+Kafka (optional)	localhost:9092	9092
+⚙️ Environment Variables
+🧱 product-service/.env
+text
+DATABASE_URL="mysql://root:root@mysql:3306/fullstack-test?parseTime=true"
+REDIS_HOST=redis
+REDIS_PORT=6379
+KAFKA_BROKER=kafka:9092
+📦 order-service/.env
+text
+DB_HOST=mysql
+DB_PORT=3306
+DB_NAME=fullstack-test
+DB_USER=root
+DB_PASSWORD=root
 
-## Architecture
+REDIS_HOST=redis
+REDIS_PORT=6379
 
-```mermaid
-flowchart LR
-  subgraph Product Service (NestJS)
-    PAPI[REST API]
-    PDB[(MySQL: products)]
-    PREDIS[(Redis)]
-  end
+PRODUCT_SERVICE_URL=http://product-service:3000
+# KAFKA_BROKER=kafka:9092
+🏗️ Architecture Overview
+Aplikasi ini dibangun dengan arsitektur microservices yang terdiri dari dua service utama:
 
-  subgraph Order Service (Go)
-    OAPI[REST API]
-    ODB[(MySQL: orders)]
-    OREDIS[(Redis)]
-  end
+Product Service (NestJS)
 
-  K[(Kafka)]
-  Z[(Zookeeper)]
+Order Service (Golang)
 
-  PAPI-- GET/POST -->PDB
-  PAPI-- cache -->PREDIS
-  OAPI-- GET/POST -->ODB
-  OAPI-- cache -->OREDIS
+Keduanya berkomunikasi secara event-driven menggunakan Apache Kafka, dengan MySQL sebagai database dan Redis untuk caching.
 
-  OAPI-- publish order.created -->K
-  K-- consume order.created -->PAPI
-  PAPI-- publish product.created -->K
+🔹 Product Service (NestJS)
+Database: MySQL (products table)
 
-  Z---K
+Cache: Redis
+
+Endpoints:
+
+POST /products → menambahkan produk baru
+
+GET /products/:id → mengambil detail produk (menggunakan cache Redis)
+
+Event Flow:
+
+Mengirim event product.created ke Kafka saat produk dibuat
+
+Mendengarkan event order.created untuk mengurangi stok produk
+
+🔹 Order Service (Golang)
+Database: MySQL (orders table)
+
+Cache: Redis
+
+Endpoints:
+
+POST /orders → membuat order baru (validasi productId ke product-service)
+
+GET /orders/product/:productId → menampilkan daftar order (cached)
+
+Event Flow:
+
+Mengirim event order.created ke Kafka agar product-service tahu stok perlu dikurangi
+
+🔹 Event & Communication (Kafka)
+Topik utama: order.created, product.created
+
+Kelebihan: Sistem loose-coupled, scalable, dan mampu menangani ribuan request per detik
+
+🔹 Caching (Redis)
+Cache digunakan untuk data yang sering diakses:
+
+Produk → GET /products/:id
+
+Order berdasarkan produk → GET /orders/product/:productId
+
+🧪 API Testing (Postman)
+Koleksi Postman tersedia di: /postman_collection.json
+
+🔹 Product Service Endpoints
+Create Product
+
+http
+POST http://localhost:3000/products
+Content-Type: application/json
+
+{
+  "name": "Nasi Goreng",
+  "price": 25000,
+  "qty": 100
+}
+Get Product by ID (Cached)
+
+http
+GET http://localhost:3000/products/1
+🔹 Order Service Endpoints
+Create Order
+
+http
+POST http://localhost:3001/orders
+Content-Type: application/json
+
+{
+  "productId": 1,
+  "qty": 2
+}
+Get Orders by Product ID (Cached)
+
+http
+GET http://localhost:3001/orders/product/1
