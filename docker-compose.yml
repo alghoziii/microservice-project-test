@@ -1,0 +1,81 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: fullstack-test
+    ports: ["3306:3306"]
+    command: --default-authentication-plugin=mysql_native_password --performance-schema=OFF --skip-log-bin
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine  
+    ports: ["6379:6379"]
+    command: redis-server --save "" --appendonly no  # No persistence
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 10s
+      retries: 5
+
+  zookeeper:
+    image: wurstmeister/zookeeper:latest
+    ports: ["2181:2181"]
+    environment:
+      ZOO_MAX_CLIENT_CNXNS: 10  # Limit connections
+
+  kafka:
+    image: wurstmeister/kafka:latest
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 1  # Minimal partitions
+      KAFKA_LOG_RETENTION_HOURS: 1  # Shorter retention
+    ports: ["9092:9092"]
+    depends_on:
+      - zookeeper
+
+  product-service:
+    build: ./product-service
+    ports: ["3000:3000"]
+    environment:
+      DATABASE_URL: mysql://root:root@mysql:3306/fullstack-test?parseTime=true
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      KAFKA_BROKER: kafka:9092
+      KAFKAJS_NO_PARTITIONER_WARNING: "1"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+
+  order-service:
+    build: ./order-service
+    ports: ["3001:3001"]
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: fullstack-test
+      DB_USER: root
+      DB_PASSWORD: root
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PRODUCT_SERVICE_URL: http://product-service:3000
+      KAFKA_BROKER: kafka:9092
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      product-service:
+        condition: service_started
+      kafka:
+        condition: service_started
